@@ -7,6 +7,37 @@
     <script src="js/jquery.min.js"></script>
     <script type="text/javascript" src="js/turn.js"></script>
     <style>
+        /* Hide all content initially */
+        #flipbook,
+        #controls {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #loading-text {
+            font-size: 24px;
+            color: #333;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
         body {
             margin: 0;
             padding: 0;
@@ -15,6 +46,8 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            overflow: hidden;
+            /* Prevent content flash during load */
         }
 
         #flipbook {
@@ -97,10 +130,10 @@
 </head>
 
 <body>
-    <div id="loading" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-         background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px; z-index: 1000;">
-        Loading scrapbook...
+    <div id="loading-screen">
+        <div id="loading-text">Loading Scrapbook...</div>
     </div>
+
     <div id="flipbook">
         <div class="hard">
             <div class="page"><img src="images/g1.gif" alt="Front Cover"></div>
@@ -125,12 +158,38 @@
         // Cache for preloaded GIFs
         const gifCache = new Map();
 
-        // Preload all GIFs
+        // Preload and optimize GIFs
         const preloadGifs = () => {
             return Promise.all([1, 2, 3, 4, 5, 6, 7, 8].map(num => {
                 return new Promise((resolve) => {
                     const img = new Image();
                     img.onload = () => {
+                        // Pre-calculate optimal dimensions for mobile
+                        const screenWidth = window.innerWidth;
+                        const screenHeight = window.innerHeight;
+                        const maxWidth = screenWidth * (screenWidth < 768 ? 0.9 : 0.8);
+                        const maxHeight = screenHeight * (screenWidth < 768 ? 0.9 : 0.8);
+
+                        let width = img.width;
+                        let height = img.height;
+
+                        // Scale down if image is larger than max dimensions
+                        if (width > maxWidth) {
+                            const scale = maxWidth / width;
+                            width *= scale;
+                            height *= scale;
+                        }
+
+                        if (height > maxHeight) {
+                            const scale = maxHeight / height;
+                            width *= scale;
+                            height *= scale;
+                        }
+
+                        // Store pre-scaled dimensions with the image
+                        img.scaledWidth = width;
+                        img.scaledHeight = height;
+
                         gifCache.set(`g${num}.gif`, img);
                         resolve(img);
                     };
@@ -145,35 +204,19 @@
 
             // Get dimensions from the first GIF (now cached)
             const firstGif = gifCache.get('g1.gif');
-            const screenWidth = window.innerWidth;
-            const screenHeight = window.innerHeight;
+            const width = firstGif.scaledWidth;
+            const height = firstGif.scaledHeight;
 
-            // Calculate dimensions that fit the screen while maintaining aspect ratio
-            const maxWidth = screenWidth * 0.8;
-            const maxHeight = screenHeight * 0.8;
-
-            let width = firstGif.width;
-            let height = firstGif.height;
-
-            // Scale down if image is larger than max dimensions
-            if (width * 2 > maxWidth) {
-                const scale = maxWidth / (width * 2);
-                width *= scale;
-                height *= scale;
-            }
-
-            if (height > maxHeight) {
-                const scale = maxHeight / height;
-                width *= scale;
-                height *= scale;
-            }
-
-            // Hide loading indicator
-            $('#loading').hide();
+            // Show content with smooth transition
+            $('#loading-screen').fadeOut(300);
+            $('#flipbook, #controls').css({
+                visibility: 'visible',
+                opacity: 0
+            }).animate({ opacity: 1 }, 300);
 
             // Initialize flipbook with the calculated dimensions
             $('#flipbook').turn({
-                width: width * 2,
+                width: width * (window.innerWidth < 768 ? 1 : 2),
                 height: height,
                 autoCenter: true,
                 duration: 50,
@@ -187,17 +230,25 @@
                             e.preventDefault();
                             $(this).turn('page', 2);
                         }
-
-                        // Instantly show preloaded GIFs
-                        const visiblePages = view.map(function (pageNum) {
-                            return $('#flipbook').turn('pages')[pageNum - 1];
-                        });
-                        $(visiblePages).find('img').each(function () {
-                            const gifName = this.src.split('/').pop();
-                            const cachedGif = gifCache.get(gifName);
-                            if (cachedGif) {
-                                const clone = cachedGif.cloneNode(true);
-                                this.parentNode.replaceChild(clone, this);
+                    },
+                    turned: function (e, page, view) {
+                        // After turn animation completes, restart GIFs on visible pages
+                        view.forEach(pageNum => {
+                            const pageElement = $(this).turn('pages')[pageNum - 1];
+                            if (pageElement) {
+                                $(pageElement).find('img').each(function () {
+                                    // Get the cached GIF
+                                    const gifName = this.src.split('/').pop();
+                                    const cachedGif = gifCache.get(gifName);
+                                    if (cachedGif) {
+                                        // Create a new clone to restart animation
+                                        const clone = cachedGif.cloneNode(true);
+                                        // Preserve the current dimensions
+                                        clone.style.width = this.style.width;
+                                        clone.style.height = this.style.height;
+                                        this.parentNode.replaceChild(clone, this);
+                                    }
+                                });
                             }
                         });
                     }
@@ -209,29 +260,21 @@
             $(window).resize(function () {
                 clearTimeout(resizeTimeout);
                 resizeTimeout = setTimeout(function () {
-                    const screenWidth = window.innerWidth;
-                    const screenHeight = window.innerHeight;
-                    const maxWidth = window.innerWidth < 768 ? screenWidth * 0.9 : screenWidth * 0.8;
-                    const maxHeight = window.innerWidth < 768 ? screenHeight * 0.9 : screenHeight * 0.8;
-
-                    // Use cached first GIF for dimensions
                     const firstGif = gifCache.get('g1.gif');
-                    let width = firstGif.width;
-                    let height = firstGif.height;
+                    const width = firstGif.scaledWidth;
+                    const height = firstGif.scaledHeight;
 
-                    if (width * 2 > maxWidth) {
-                        const scale = maxWidth / (width * 2);
-                        width *= scale;
-                        height *= scale;
+                    $('#flipbook').turn('size',
+                        width * (window.innerWidth < 768 ? 1 : 2),
+                        height
+                    );
+
+                    // Update display mode if needed
+                    const currentDisplay = $('#flipbook').turn('display');
+                    const newDisplay = window.innerWidth < 768 ? 'single' : 'double';
+                    if (currentDisplay !== newDisplay) {
+                        $('#flipbook').turn('display', newDisplay);
                     }
-
-                    if (height > maxHeight) {
-                        const scale = maxHeight / height;
-                        width *= scale;
-                        height *= scale;
-                    }
-
-                    $('#flipbook').turn('size', width * 2, height);
                 }, 150);
             });
 
