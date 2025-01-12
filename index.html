@@ -3,7 +3,8 @@
 
 <head>
     <title>Invitation</title>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="js/jquery.min.js"></script>
     <script type="text/javascript" src="js/turn.js"></script>
     <style>
         body {
@@ -96,6 +97,10 @@
 </head>
 
 <body>
+    <div id="loading" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+         background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px; z-index: 1000;">
+        Loading scrapbook...
+    </div>
     <div id="flipbook">
         <div class="hard">
             <div class="page"><img src="images/g1.gif" alt="Front Cover"></div>
@@ -163,6 +168,9 @@
                 height *= scale;
             }
 
+            // Hide loading indicator
+            $('#loading').hide();
+
             // Initialize flipbook with the calculated dimensions
             $('#flipbook').turn({
                 width: width * 2,
@@ -172,10 +180,10 @@
                 gradients: false,
                 acceleration: false,
                 elevation: 0,
-                display: 'double',
+                display: window.innerWidth < 768 ? 'single' : 'double',
                 when: {
                     turning: function (e, page, view) {
-                        if (page == 1) {
+                        if (window.innerWidth >= 768 && page == 1) {
                             e.preventDefault();
                             $(this).turn('page', 2);
                         }
@@ -203,8 +211,8 @@
                 resizeTimeout = setTimeout(function () {
                     const screenWidth = window.innerWidth;
                     const screenHeight = window.innerHeight;
-                    const maxWidth = screenWidth * 0.8;
-                    const maxHeight = screenHeight * 0.8;
+                    const maxWidth = window.innerWidth < 768 ? screenWidth * 0.9 : screenWidth * 0.8;
+                    const maxHeight = window.innerWidth < 768 ? screenHeight * 0.9 : screenHeight * 0.8;
 
                     // Use cached first GIF for dimensions
                     const firstGif = gifCache.get('g1.gif');
