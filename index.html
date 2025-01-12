@@ -168,10 +168,10 @@
                 width: width * 2,
                 height: height,
                 autoCenter: true,
-                duration: 1000,
+                duration: 50,
                 gradients: false,
-                acceleration: true,
-                elevation: 50,
+                acceleration: false,
+                elevation: 0,
                 display: 'double',
                 when: {
                     turning: function (e, page, view) {
@@ -180,19 +180,17 @@
                             $(this).turn('page', 2);
                         }
 
-                        // Use requestAnimationFrame for smooth GIF reloading
-                        requestAnimationFrame(() => {
-                            const visiblePages = view.map(function (pageNum) {
-                                return $('#flipbook').turn('pages')[pageNum - 1];
-                            });
-                            $(visiblePages).find('img').each(function () {
-                                const gifName = this.src.split('/').pop();
-                                // Use cached GIF dimensions for consistent sizing
-                                const cachedGif = gifCache.get(gifName);
-                                if (cachedGif) {
-                                    this.src = this.src.split('?')[0] + '?t=' + Date.now();
-                                }
-                            });
+                        // Instantly show preloaded GIFs
+                        const visiblePages = view.map(function (pageNum) {
+                            return $('#flipbook').turn('pages')[pageNum - 1];
+                        });
+                        $(visiblePages).find('img').each(function () {
+                            const gifName = this.src.split('/').pop();
+                            const cachedGif = gifCache.get(gifName);
+                            if (cachedGif) {
+                                const clone = cachedGif.cloneNode(true);
+                                this.parentNode.replaceChild(clone, this);
+                            }
                         });
                     }
                 }
