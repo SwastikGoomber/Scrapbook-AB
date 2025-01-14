@@ -7,6 +7,20 @@
     <script src="js/jquery.min.js"></script>
     <script type="text/javascript" src="js/turn.js"></script>
     <style>
+        @keyframes blink {
+            0% {
+                transform: translateX(-50%) scale(1);
+            }
+
+            50% {
+                transform: translateX(-50%) scale(1.1);
+            }
+
+            100% {
+                transform: translateX(-50%) scale(1);
+            }
+        }
+
         /* Hide all content initially */
         #flipbook,
         #controls {
@@ -73,29 +87,37 @@
 
         #controls {
             position: fixed;
-            bottom: 20px;
+            bottom: 5%;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(0, 0, 0, 0.7);
-            padding: 10px 20px;
-            border-radius: 20px;
+            padding: 15px 25px;
+            border-radius: 30px;
             display: flex;
-            gap: 10px;
+            gap: 15px;
             z-index: 100;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
 
         #controls button {
-            padding: 8px 15px;
+            padding: 12px 20px;
             border: none;
             background: #fff;
             cursor: pointer;
-            border-radius: 5px;
+            border-radius: 8px;
             font-weight: bold;
-            transition: background 0.2s;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            min-width: 100px;
         }
 
         #controls button:hover {
-            background: #eee;
+            background: #f0f0f0;
+            transform: translateY(-2px);
+        }
+
+        #controls button.blink {
+            animation: blink 1s ease infinite;
         }
 
         .page {
@@ -167,30 +189,47 @@
 
     <div id="controls">
         <button onclick="$('#flipbook').turn('previous')">Previous</button>
-        <button onclick="$('#flipbook').turn('next')">Next</button>
+        <button onclick="$('#flipbook').turn('next')" id="next-btn">Next</button>
     </div>
 
     <script>
         // Cache for preloaded GIFs
         const gifCache = new Map();
+        let lastInteractionTime = Date.now();
+        let blinkInterval;
+
+        function updateBlinkState() {
+            const nextBtn = document.getElementById('next-btn');
+            const timeSinceLastInteraction = Date.now() - lastInteractionTime;
+
+            if (timeSinceLastInteraction >= 10000) {
+                nextBtn.classList.add('blink');
+            } else {
+                nextBtn.classList.remove('blink');
+            }
+        }
+
+        function resetInteractionTimer() {
+            lastInteractionTime = Date.now();
+            document.getElementById('next-btn').classList.remove('blink');
+        }
 
         // Preload and optimize GIFs
         const preloadGifs = () => {
-            return Promise.all([1, 2, 3, 4, 5, 6, 7, 8].map(num => {
+            const loadPromises = [1, 2, 3, 4, 5, 6, 7, 8].map(num => {
                 return new Promise((resolve) => {
                     const img = new Image();
                     img.onload = () => {
                         // Pre-calculate optimal dimensions
                         const screenWidth = window.innerWidth;
                         const screenHeight = window.innerHeight;
-                        const maxWidth = Math.min(screenWidth * 0.8, 1200); // Cap max width
-                        const maxHeight = Math.min(screenHeight * 0.8, 800); // Cap max height
+                        const maxWidth = Math.min(screenWidth * 0.8, 1200);
+                        const maxHeight = Math.min(screenHeight * 0.8, 800);
 
                         let width = img.width;
                         let height = img.height;
 
-                        // Scale down if image is larger than max dimensions
-                        if (width > maxWidth / 2) { // Divide by 2 since we show two pages
+                        if (width > maxWidth / 2) {
                             const scale = (maxWidth / 2) / width;
                             width *= scale;
                             height *= scale;
@@ -202,74 +241,92 @@
                             height *= scale;
                         }
 
-                        // Store pre-scaled dimensions with the image
                         img.scaledWidth = width;
                         img.scaledHeight = height;
-
                         gifCache.set(`g${num}.gif`, img);
                         resolve(img);
                     };
+                    img.onerror = () => {
+                        console.error(`Failed to load g${num}.gif`);
+                        resolve(null);
+                    };
                     img.src = `images/g${num}.gif`;
                 });
-            }));
+            });
+
+            return Promise.all(loadPromises);
         };
 
         $(document).ready(async function () {
-            // Start preloading all GIFs
-            await preloadGifs();
+            try {
+                // Start preloading all GIFs
+                const loadedImages = await preloadGifs();
 
-            // Get dimensions from the first GIF (now cached)
-            const firstGif = gifCache.get('g1.gif');
-            const width = firstGif.scaledWidth;
-            const height = firstGif.scaledHeight;
-
-            // Show content with smooth transition
-            $('#loading-screen').fadeOut(300);
-            $('#flipbook, #controls').css({
-                visibility: 'visible',
-                opacity: 0
-            }).animate({ opacity: 1 }, 300);
-
-            // Initialize flipbook with the calculated dimensions
-            $('#flipbook').turn({
-                width: width * 2, // Always double width for two pages
-                height: height,
-                autoCenter: true,
-                duration: 600, // Slower, smoother animation
-                gradients: true,
-                acceleration: true,
-                elevation: 50,
-                display: 'double', // Always show double pages
-                when: {
-                    turning: function (e, page, view) {
-                        if (page == 1) {
-                            e.preventDefault();
-                            $(this).turn('page', 2);
-                        }
-                    },
-                    turned: function (e, page, view) {
-                        // After turn animation completes, restart GIFs on visible pages
-                        view.forEach(pageNum => {
-                            const pageElement = $(this).turn('pages')[pageNum - 1];
-                            if (pageElement) {
-                                $(pageElement).find('img').each(function () {
-                                    // Get the cached GIF
-                                    const gifName = this.src.split('/').pop();
-                                    const cachedGif = gifCache.get(gifName);
-                                    if (cachedGif) {
-                                        // Create a new clone to restart animation
-                                        const clone = cachedGif.cloneNode(true);
-                                        // Preserve the current dimensions
-                                        clone.style.width = this.style.width;
-                                        clone.style.height = this.style.height;
-                                        this.parentNode.replaceChild(clone, this);
-                                    }
-                                });
-                            }
-                        });
-                    }
+                // Check if all images loaded successfully
+                if (loadedImages.some(img => !img)) {
+                    throw new Error('Some images failed to load');
                 }
-            });
+
+                // Get dimensions from the first GIF
+                const firstGif = gifCache.get('g1.gif');
+                const width = firstGif.scaledWidth;
+                const height = firstGif.scaledHeight;
+
+                // Initialize flipbook
+                $('#flipbook').turn({
+                    width: width * 2,
+                    height: height,
+                    autoCenter: true,
+                    duration: 600,
+                    gradients: true,
+                    acceleration: true,
+                    elevation: 50,
+                    display: 'double',
+                    when: {
+                        turning: function (e, page, view) {
+                            resetInteractionTimer();
+                            if (page == 1) {
+                                e.preventDefault();
+                                $(this).turn('page', 2);
+                            }
+                        },
+                        turned: function (e, page, view) {
+                            view.forEach(pageNum => {
+                                const pageElement = $(this).turn('pages')[pageNum - 1];
+                                if (pageElement) {
+                                    $(pageElement).find('img').each(function () {
+                                        const gifName = this.src.split('/').pop();
+                                        const cachedGif = gifCache.get(gifName);
+                                        if (cachedGif) {
+                                            const clone = cachedGif.cloneNode(true);
+                                            clone.style.width = this.style.width;
+                                            clone.style.height = this.style.height;
+                                            this.parentNode.replaceChild(clone, this);
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }
+                });
+
+                // Show content with smooth transition only after initialization
+                $('#loading-screen').fadeOut(300);
+                $('#flipbook, #controls').css({
+                    visibility: 'visible',
+                    opacity: 0
+                }).animate({ opacity: 1 }, 300);
+
+                // Start the blink interval
+                setInterval(updateBlinkState, 1000);
+
+                // Add interaction listeners
+                $(document).on('mousemove keydown touchstart', resetInteractionTimer);
+
+            } catch (error) {
+                console.error('Error initializing scrapbook:', error);
+                $('#loading-text').text('Error loading scrapbook. Please refresh the page.');
+            }
 
             // Update dimensions on window resize
             let resizeTimeout;
@@ -304,8 +361,10 @@
             $(window).on('keydown', function (e) {
                 if (e.keyCode == 37) {
                     $('#flipbook').turn('previous');
+                    resetInteractionTimer();
                 } else if (e.keyCode == 39) {
                     $('#flipbook').turn('next');
+                    resetInteractionTimer();
                 }
             });
         });
