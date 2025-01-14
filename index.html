@@ -214,6 +214,7 @@
         let lastInteractionTime = Date.now();
         let blinkInterval;
         let isInitialized = false;
+        let isFullyLoaded = false;
 
         function updateBlinkState() {
             const nextBtn = document.getElementById('next-btn');
@@ -229,6 +230,16 @@
         function resetInteractionTimer() {
             lastInteractionTime = Date.now();
             document.getElementById('next-btn').classList.remove('blink');
+        }
+
+        function showContent() {
+            if (isInitialized && isFullyLoaded) {
+                $('#loading-screen').fadeOut(300);
+                $('#flipbook, #controls').css({
+                    visibility: 'visible',
+                    opacity: 0
+                }).animate({ opacity: 1 }, 300);
+            }
         }
 
         // Preload and optimize GIFs
@@ -328,14 +339,24 @@
                 }).bind('start', function (e, pageObject, corner) {
                     if (!isInitialized) {
                         isInitialized = true;
-                        // Show content with smooth transition only after first page is ready
-                        $('#loading-screen').fadeOut(300);
-                        $('#flipbook, #controls').css({
-                            visibility: 'visible',
-                            opacity: 0
-                        }).animate({ opacity: 1 }, 300);
+                        showContent();
                     }
                 });
+
+                // Wait for first page to be fully rendered
+                setTimeout(() => {
+                    const firstPage = $('#flipbook').find('.page').first();
+                    if (firstPage.width() > 0 && firstPage.height() > 0) {
+                        isFullyLoaded = true;
+                        showContent();
+                    } else {
+                        // If still not rendered, wait for load event
+                        firstPage.find('img').on('load', function () {
+                            isFullyLoaded = true;
+                            showContent();
+                        });
+                    }
+                }, 500);
 
                 // Start the blink interval
                 setInterval(updateBlinkState, 1000);
